@@ -36,10 +36,10 @@ Crawler (Playwright, planned) ─▶ Detection Engine ─▶ Proof Verifier ─�
 
 | Phase | What | State |
 |-------|------|-------|
-| 1 | Deterministic engine (boolean + error + time-based), CLI, `-r`/URL input, JSON report | ✅ this scaffold |
-| 2 | Proof-based verification + SARIF output | 🔜 |
+| 1 | Deterministic engine (boolean + error + time-based), CLI, `-r`/URL input, JSON report | ✅ done |
+| 2 | Proof-based verification (independent re-confirmation) + SARIF output | ✅ done |
 | 3 | Playwright SPA/API crawler | 🔜 |
-| 4 | Trained ML classifier (TF-IDF/XGBoost → DistilBERT) | 🔜 (`notebooks/`) |
+| 4 | Trained ML classifier (XGBoost baseline → DistilBERT) wired into triage | ✅ baseline done |
 | 5 | Benchmark vs sqlmap & Ghauri on DVWA/Juice Shop | 🔜 |
 
 ## Quick start
@@ -58,9 +58,36 @@ sqlintel -u "http://localhost:8080/vulnerabilities/sqli/?id=1&Submit=Submit" -p 
 # ...or replay a saved request (like sqlmap's -r)
 sqlintel -r request.txt --batch
 
-# JSON report for CI/CD
-sqlintel -u "http://target/item?id=1" -p id --json reports/scan.json
+# JSON + SARIF report for CI/CD (SARIF uploads to GitHub code scanning)
+sqlintel -u "http://target/item?id=1" -p id --json reports/scan.json --sarif reports/scan.sarif
+
+# Skip proof-based re-confirmation (faster, noisier)
+sqlintel -u "http://target/item?id=1" -p id --no-verify
 ```
+
+## Proof-based verification
+
+Every finding is re-confirmed a second, independent way before it's marked `proven`
+(severity → `critical`) — the open-source take on commercial "proof-based scanning":
+
+- **error-based**: an unbalanced quote must raise a DB error *and* a balanced (`''`) one must not.
+- **boolean-based**: an *orthogonal* TRUE/FALSE payload pair must reproduce the same divergence.
+- **time-based**: the detector already double-confirms against a 0-second control.
+
+## Train the ML triage model (free, local)
+
+```bash
+pip install -e ".[ml]"
+python scripts/generate_dataset.py   # -> datasets/train.csv (seed data; extend with your own)
+python scripts/train_model.py        # -> models/sqli_clf.joblib
+```
+
+Once `models/sqli_clf.joblib` exists, `sqlintel/ml/triage.py` auto-loads it and blends the
+model's probability into each finding's confidence. Until then, triage is a graceful no-op.
+
+> ⚠️ The bundled seed dataset is tiny (~60 rows) and scores ~1.0 — that's **overfitting**, not a
+> real metric. The honest numbers come from Phase 5: collect labeled traffic by running the engine
+> against DVWA/Juice Shop, retrain, and report precision/recall/FP-rate vs sqlmap & Ghauri.
 
 ## Roadmap for the ML component
 

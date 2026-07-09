@@ -11,6 +11,7 @@ from typing import Callable, List, Optional
 
 from ..detectors import ALL_DETECTORS, TimeBasedDetector
 from ..ml.triage import triage_finding
+from ..verify import ProofVerifier
 from .http_client import HttpClient
 from .target import Finding, Request
 
@@ -20,10 +21,12 @@ class Engine:
         self,
         client: HttpClient,
         time_delay: int = 5,
+        verify: bool = True,
         on_event: Optional[Callable[[str], None]] = None,
     ) -> None:
         self.client = client
         self.time_delay = time_delay
+        self.verify = verify
         # Optional progress callback (the CLI passes a Rich logger).
         self._emit = on_event or (lambda _msg: None)
 
@@ -45,12 +48,16 @@ class Engine:
             self._emit(f"Testing parameter: {point.param} ({point.location})")
             finding = self._test_point(req, point, baseline)
             if finding:
-                # ML triage refines confidence; deterministic detection already decided.
+                # 1) Proof-based verification re-confirms independently (sets proven).
+                if self.verify:
+                    ProofVerifier(self.client, baseline).verify(req, finding)
+                # 2) ML triage refines confidence; deterministic detection already decided.
                 triage_finding(finding)
                 findings.append(finding)
                 self._emit(
                     f"  [+] {point.param}: {finding.technique} "
-                    f"(dbms={finding.dbms or 'unknown'}, conf={finding.confidence:.2f})"
+                    f"(dbms={finding.dbms or 'unknown'}, conf={finding.confidence:.2f}, "
+                    f"proven={finding.proven})"
                 )
             else:
                 self._emit(f"  [-] {point.param}: not injectable")

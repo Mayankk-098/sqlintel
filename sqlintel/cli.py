@@ -13,7 +13,7 @@ from . import __version__
 from .core.engine import Engine
 from .core.http_client import HttpClient
 from .core.request_parser import from_raw_file, from_url
-from .report.reporter import print_console, to_json
+from .report.reporter import print_console, to_json, to_sarif
 
 # Best-effort UTF-8 stdout on Windows so Rich never chokes on legacy code pages.
 for _stream in (sys.stdout, sys.stderr):
@@ -62,6 +62,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Extra header 'Name: value' (repeatable)")
 
     p.add_argument("--json", metavar="PATH", help="Write JSON report to PATH")
+    p.add_argument("--sarif", metavar="PATH",
+                   help="Write SARIF 2.1.0 report to PATH (for GitHub code scanning / CI)")
+    p.add_argument("--no-verify", action="store_true",
+                   help="Skip proof-based re-confirmation of findings")
     p.add_argument("--batch", action="store_true",
                    help="Non-interactive: assume authorization confirmed")
     p.add_argument("-q", "--quiet", action="store_true", help="Suppress progress output")
@@ -119,7 +123,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         extra_headers=extra_headers,
         delay=args.delay,
     ) as client:
-        engine = Engine(client, time_delay=args.time_sec, on_event=emit)
+        engine = Engine(
+            client,
+            time_delay=args.time_sec,
+            verify=not args.no_verify,
+            on_event=emit,
+        )
         try:
             findings = engine.scan(req, only_params=only_params)
         except KeyboardInterrupt:
@@ -134,6 +143,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             fh.write(to_json(findings, target_desc))
         if not args.quiet:
             console.print(f"\n[green]JSON report written to {args.json}[/green]")
+
+    if args.sarif:
+        os.makedirs(os.path.dirname(os.path.abspath(args.sarif)), exist_ok=True)
+        with open(args.sarif, "w", encoding="utf-8") as fh:
+            fh.write(to_sarif(findings, target_desc))
+        if not args.quiet:
+            console.print(f"[green]SARIF report written to {args.sarif}[/green]")
 
     # Exit non-zero when findings exist → CI/CD gates can fail the build.
     return 1 if findings else 0

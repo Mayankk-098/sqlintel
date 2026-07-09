@@ -102,6 +102,23 @@ TIME_PAYLOADS: Dict[str, List[str]] = {
 }
 
 
+# --- Proof-based verification -------------------------------------------------
+# Orthogonal TRUE/FALSE pairs (different syntax from BOOLEAN_PAIRS) used to RE-confirm
+# a boolean finding. Re-detecting with independent payloads is strong evidence the
+# behavior is a genuine SQL boolean, not a coincidence — our free take on Invicti's
+# "proof-based scanning".
+PROOF_BOOLEAN_PAIRS: List[Tuple[str, str]] = [
+    ("' AND 7=7-- -", "' AND 7=8-- -"),
+    (" AND 9>1", " AND 9<1"),
+    ("' OR '3'='3", "' OR '3'='4"),
+]
+
+# For error-based proof: an unbalanced quote should trigger a DB error, while a
+# balanced (doubled) quote should NOT. If the error toggles predictably, it's proven.
+PROOF_ERROR_BREAK = "'"
+PROOF_ERROR_FIX = "''"
+
+
 def all_time_payloads(delay: int) -> List[Tuple[str, str]]:
     """Flatten into (dbms, payload) with {delay} substituted."""
     out: List[Tuple[str, str]] = []
