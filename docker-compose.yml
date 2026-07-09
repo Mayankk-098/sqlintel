@@ -1,0 +1,19 @@
+# Local, legal-to-attack test targets for SQLintel.
+#   docker compose up -d
+# DVWA:        http://localhost:8080  (login admin/password, set security to "low")
+# Juice Shop:  http://localhost:3000
+#
+# These are intentionally vulnerable apps built for security practice.
+# NEVER point SQLintel at a target you do not own or lack written authorization to test.
+services:
+  dvwa:
+    image: vulnerables/web-dvwa
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  juice-shop:
+    image: bkimminich/juice-shop
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
