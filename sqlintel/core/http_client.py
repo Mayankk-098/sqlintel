@@ -73,14 +73,24 @@ class HttpClient:
         if self.delay:
             time.sleep(self.delay)
 
+        # Serialize the body per its declared type. JSON endpoints (captured by the
+        # crawler) need `json=` so httpx sets Content-Type: application/json and encodes
+        # the dict as a JSON object; form endpoints keep the urlencoded `data=` path.
+        send_kwargs = {}
+        if body:
+            if req.body_type == "json":
+                send_kwargs["json"] = body
+            else:
+                send_kwargs["data"] = body
+
         start = time.perf_counter()
         resp = self._client.request(
             req.method,
             req.url,
             params=query or None,
-            data=body or None,
             cookies=req.cookies or None,
             headers=req.headers or None,
+            **send_kwargs,
         )
         elapsed = time.perf_counter() - start
         return Response(

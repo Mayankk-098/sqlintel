@@ -41,8 +41,14 @@ def print_console(findings: List[Finding], console: Console) -> None:
         console.print("\n[bold green]No SQL injection findings.[/bold green]")
         return
 
+    # Only show the Endpoint column in crawl mode (findings span >1 URL); single-target
+    # output stays exactly as before.
+    show_endpoint = len({f.url for f in findings if f.url}) > 1
+
     # ASCII box so output is safe on any console encoding (e.g. Windows cp1252).
     table = Table(title="SQLintel - Findings", show_lines=True, box=box.ASCII)
+    if show_endpoint:
+        table.add_column("Endpoint", style="blue", overflow="fold")
     table.add_column("Param", style="cyan", no_wrap=True)
     table.add_column("Technique", style="magenta")
     table.add_column("DBMS")
@@ -53,7 +59,7 @@ def print_console(findings: List[Finding], console: Console) -> None:
 
     for f in findings:
         sev_color = "red" if f.severity == "critical" else "yellow"
-        table.add_row(
+        row = [
             f.injection_point.param,
             f.technique,
             f.dbms or "unknown",
@@ -61,7 +67,10 @@ def print_console(findings: List[Finding], console: Console) -> None:
             f"{f.confidence:.2f}",
             "yes" if f.proven else "",
             f.evidence,
-        )
+        ]
+        if show_endpoint:
+            row.insert(0, f.url)
+        table.add_row(*row)
     console.print(table)
 
     console.print("\n[bold]Remediation[/bold]")
@@ -115,7 +124,8 @@ def to_sarif(findings: List[Finding], target: str) -> str:
                 "locations": [
                     {
                         "physicalLocation": {
-                            "artifactLocation": {"uri": target},
+                            # Per-finding endpoint in crawl mode; falls back to the seed.
+                            "artifactLocation": {"uri": f.url or target},
                         }
                     }
                 ],
@@ -160,6 +170,7 @@ def to_json(findings: List[Finding], target: str) -> str:
         },
         "results": [
             {
+                "url": f.url or target,
                 "param": f.injection_point.param,
                 "location": f.injection_point.location,
                 "technique": f.technique,

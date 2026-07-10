@@ -13,6 +13,7 @@ from . import __version__
 from .core.engine import Engine
 from .core.http_client import HttpClient
 from .core.request_parser import from_raw_file, from_url
+from .crawler import PLAYWRIGHT_AVAILABLE, CrawlConfig, Crawler, Scope
 from .report.reporter import print_console, to_json, to_sarif
 
 # Best-effort UTF-8 stdout on Windows so Rich never chokes on legacy code pages.
@@ -48,6 +49,17 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("-u", "--url", help="Target URL, e.g. 'http://host/item?id=1'")
     target.add_argument("-r", "--request-file", help="Raw HTTP request file (Burp-style)")
 
+    p.add_argument("--crawl", action="store_true",
+                   help="Crawl the target (SPA/API aware) to discover endpoints, then scan each")
+    p.add_argument("--max-pages", type=int, default=25,
+                   help="Crawl: max pages to visit (default: 25)")
+    p.add_argument("--max-depth", type=int, default=3,
+                   help="Crawl: max link depth from the seed (default: 3)")
+    p.add_argument("--include", action="append", default=[],
+                   help="Crawl: only visit URLs matching this regex (repeatable)")
+    p.add_argument("--exclude", action="append", default=[],
+                   help="Crawl: skip URLs matching this regex (repeatable)")
+
     p.add_argument("-p", "--param", help="Comma-separated params to test (default: all)")
     p.add_argument("-m", "--method", default="GET", help="HTTP method for -u (default: GET)")
     p.add_argument("-d", "--data", default="", help="POST body for -u, e.g. 'a=1&b=2'")
@@ -80,6 +92,66 @@ def _parse_headers(items: List[str]) -> dict:
             name, _, value = item.partition(":")
             headers[name.strip()] = value.strip()
     return headers
+
+
+def _split_cookie_header(headers: dict) -> tuple:
+    """Pull a `Cookie:` header out of the header map into a {name: value} dict.
+
+    Playwright rejects Cookie in extra_http_headers, so we route it to the browser
+    context's cookie jar and return the remaining headers separately.
+    """
+    cookies: dict = {}
+    rest: dict = {}
+    for name, val in headers.items():
+        if name.lower() == "cookie":
+            for pair in val.split(";"):
+                if "=" in pair:
+                    k, _, v = pair.strip().partition("=")
+                    cookies[k] = v
+        else:
+            rest[name] = val
+    return cookies, rest
+
+
+def _run_crawl(args, req, extra_headers, engine, emit, quiet) -> list:
+    """Crawl from the seed, then scan every discovered endpoint. Returns findings."""
+    if not PLAYWRIGHT_AVAILABLE:
+        console.print(
+            "[red]Crawling requires Playwright, which is not installed.[/red]\n"
+            r"  Install it with:  [cyan]pip install -e .\[crawler][/cyan]" "\n"
+            "  Then fetch a browser:  [cyan]playwright install chromium[/cyan]"
+        )
+        return None
+
+    seed_url = args.url or req.url
+
+    # Auth context: cookies + headers from -r and/or -H flow into both the browser and
+    # every scanned request, so authenticated areas are reachable end-to-end.
+    header_cookies, header_rest = _split_cookie_header(extra_headers)
+    cookies = {**req.cookies, **header_cookies}
+    headers = {**req.headers, **header_rest}
+
+    scope = Scope(seed_url, include=args.include, exclude=args.exclude)
+    config = CrawlConfig(
+        scope=scope,
+        max_pages=args.max_pages,
+        max_depth=args.max_depth,
+        timeout_s=args.timeout,
+        cookies=cookies,
+        headers=headers,
+    )
+
+    if not quiet:
+        console.print(f"[dim]Crawling {seed_url} ...[/dim]")
+    discovered = Crawler(config, on_event=emit).crawl(seed_url)
+
+    # Propagate the auth context onto each discovered endpoint before scanning.
+    for d in discovered:
+        d.cookies = dict(cookies)
+        d.headers = {**headers, **d.headers}
+
+    console.print(f"[green]Discovered {len(discovered)} endpoint(s) to scan.[/green]")
+    return engine.scan_many(discovered)
 
 
 def _confirm_authorization(batch: bool) -> bool:
@@ -130,7 +202,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             on_event=emit,
         )
         try:
-            findings = engine.scan(req, only_params=only_params)
+            if args.crawl:
+                findings = _run_crawl(args, req, extra_headers, engine, emit, args.quiet)
+                if findings is None:  # Playwright missing — message already printed.
+                    return 2
+            else:
+                findings = engine.scan(req, only_params=only_params)
         except KeyboardInterrupt:
             console.print("\n[yellow]Interrupted.[/yellow]")
             return 130

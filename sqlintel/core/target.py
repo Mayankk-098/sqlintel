@@ -30,6 +30,9 @@ class Request:
     query: Dict[str, str] = field(default_factory=dict)
     body: Dict[str, str] = field(default_factory=dict)
     cookies: Dict[str, str] = field(default_factory=dict)
+    # How the body is serialized on the wire: "form" (x-www-form-urlencoded) or "json".
+    # The crawler sets "json" for captured REST/API endpoints; everything else stays form.
+    body_type: str = "form"
 
     def injection_points(self, only: Optional[List[str]] = None) -> List[InjectionPoint]:
         """Enumerate candidate injection points across query and body params.
@@ -53,6 +56,9 @@ class Finding:
 
     injection_point: InjectionPoint
     technique: str  # "error-based" | "boolean-based" | "time-based"
+    # The endpoint this finding was found at — filled in by the engine. Matters in crawl
+    # mode where one scan spans many endpoints; empty for a single -u/-r target.
+    url: str = ""
     dbms: Optional[str] = None
     payload: str = ""
     evidence: str = ""

@@ -48,6 +48,9 @@ class Engine:
             self._emit(f"Testing parameter: {point.param} ({point.location})")
             finding = self._test_point(req, point, baseline)
             if finding:
+                # Tag the finding with its endpoint so crawl-mode reports can attribute
+                # each finding to the right URL (harmless for single -u/-r targets).
+                finding.url = req.url
                 # 1) Proof-based verification re-confirms independently (sets proven).
                 if self.verify:
                     ProofVerifier(self.client, baseline).verify(req, finding)
@@ -62,6 +65,18 @@ class Engine:
             else:
                 self._emit(f"  [-] {point.param}: not injectable")
         return findings
+
+    def scan_many(self, requests: List[Request]) -> List[Finding]:
+        """Scan a batch of requests (e.g. a crawl result) and aggregate all findings.
+
+        Each request gets its own baseline inside `scan()`; findings carry their `url`.
+        """
+        all_findings: List[Finding] = []
+        total = len(requests)
+        for idx, req in enumerate(requests, start=1):
+            self._emit(f"[{idx}/{total}] Scanning {req.method} {req.url}")
+            all_findings.extend(self.scan(req))
+        return all_findings
 
     def _test_point(self, req: Request, point, baseline) -> Optional[Finding]:
         for detector_cls in ALL_DETECTORS:

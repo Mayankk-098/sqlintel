@@ -2,8 +2,8 @@
 
 **AI-augmented SQL injection vulnerability scanner.** A deterministic detection engine
 (boolean / error / time-based) that reliably finds and *proves* SQLi, with a trained ML
-layer to cut false positives — plus a roadmap for browser-based SPA/API crawling that
-traditional scanners miss.
+layer to cut false positives — plus browser-based SPA/API crawling that auto-discovers
+endpoints (including JSON APIs) traditional scanners miss.
 
 > ⚠️ **Legal use only.** Scan only systems you own or have **written authorization** to test.
 > The bundled `docker-compose.yml` spins up intentionally vulnerable practice apps (DVWA,
@@ -26,7 +26,7 @@ model advises (false-positive triage, injectability ranking). The model never de
 ## Architecture
 
 ```
-Crawler (Playwright, planned) ─▶ Detection Engine ─▶ Proof Verifier ─▶ Report (console/JSON/SARIF)
+Crawler (Playwright, SPA/API) ─▶ Detection Engine ─▶ Proof Verifier ─▶ Report (console/JSON/SARIF)
                                       │  ▲
                                       ▼  │
                                   ML layer (advises: FP triage, ranking)
@@ -38,7 +38,7 @@ Crawler (Playwright, planned) ─▶ Detection Engine ─▶ Proof Verifier ─�
 |-------|------|-------|
 | 1 | Deterministic engine (boolean + error + time-based), CLI, `-r`/URL input, JSON report | ✅ done |
 | 2 | Proof-based verification (independent re-confirmation) + SARIF output | ✅ done |
-| 3 | Playwright SPA/API crawler | 🔜 |
+| 3 | Playwright SPA/API crawler (auto endpoint discovery, JSON API bodies) | ✅ done |
 | 4 | Trained ML classifier (XGBoost baseline → DistilBERT) wired into triage | ✅ baseline done |
 | 5 | Benchmark vs sqlmap & Ghauri on DVWA/Juice Shop | 🔜 |
 
@@ -64,6 +64,34 @@ sqlintel -u "http://target/item?id=1" -p id --json reports/scan.json --sarif rep
 # Skip proof-based re-confirmation (faster, noisier)
 sqlintel -u "http://target/item?id=1" -p id --no-verify
 ```
+
+## Crawl mode (SPA/API discovery)
+
+Point SQLintel at a seed URL and let it discover the attack surface for you. Unlike
+HTML-only crawlers, it drives a real headless browser and captures the **XHR/fetch/API
+calls a single-page app makes at runtime** — plus classic `<a>` links and `<form>`s —
+then scans every unique endpoint it finds. JSON request bodies (REST APIs) are supported:
+top-level fields become injection points and are re-sent as JSON.
+
+```bash
+# 1. One-time setup (crawler deps are optional to keep the core light)
+pip install -e ".[crawler]"
+playwright install chromium          # downloads the headless browser (~150 MB, free/local)
+
+# 2. Crawl + scan
+sqlintel -u "http://localhost:8080/" --crawl --batch
+
+# Bound the crawl and pass auth (cookies/headers flow into the browser AND every scan)
+sqlintel -u "http://localhost:8080/" --crawl --max-pages 15 --max-depth 2 \
+         -H "Cookie: PHPSESSID=abc; security=low" --batch
+
+# Focus or exclude parts of the app (repeatable regexes)
+sqlintel -u "http://target/" --crawl --include "/api/" --exclude "/logout" --batch
+```
+
+Endpoints are de-duplicated by *method + path + parameter names*, so `/item?id=1` and
+`/item?id=2` are scanned once. In crawl mode the report gains an **Endpoint** column so
+each finding is attributed to its URL (also reflected in JSON/SARIF output).
 
 ## Proof-based verification
 
