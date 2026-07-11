@@ -48,11 +48,72 @@ _INDEX_HTML = """<html><body>
 </body></html>"""
 
 
+_PRODUCT = "Product #1: Blue Widget - in stock. Full description here."
+_EMPTY = "No results found."
+
+# Only a purely-numeric boolean expression is safe to evaluate; anything with quotes,
+# letters (SLEEP, column names) or other syntax is something this toy doesn't model.
+_NUMERIC_BOOL = re.compile(r"[^0-9\s()<>=!]")
+
+
+def _balance_parens(expr: str) -> str:
+    """Rebalance parentheses so a `1) AND ... AND (1=1` boundary evaluates as valid.
+
+    sqlmap/Ghauri confirm injections with a parenthesis boundary that assumes the real
+    query wraps the value like `WHERE (id = <raw>)`. We restore that wrapping by adding a
+    matching `(` for every unmatched `)` and a matching `)` for every unmatched `(`.
+    """
+    open_count = need_open = 0
+    for ch in expr:
+        if ch == "(":
+            open_count += 1
+        elif ch == ")":
+            if open_count:
+                open_count -= 1
+            else:
+                need_open += 1
+    return "(" * need_open + expr + ")" * open_count
+
+
+def _row_matches(raw: str) -> bool:
+    """Simulate ``SELECT ... WHERE (id = <raw>)`` for the one row whose id is 1.
+
+    We evaluate the injected boolean tail the way a real numeric query would, so
+    ``AND 1=1`` / ``AND <rand>=<rand>`` (TRUE) and ``AND 1=2`` / ``AND <rand>=<rand+1>``
+    (FALSE) produce consistently different pages, and the parenthesis-boundary variants
+    the scanners use for their false-positive check evaluate correctly too. That fidelity
+    is what lets sqlmap and Ghauri *confirm* the injection instead of rejecting it as a
+    false positive — the point of a fair benchmark oracle, not a string-match toy.
+    """
+    # Strip SQL comments so `... 1=1-- -` evaluates as `... 1=1`.
+    expr = re.sub(r"/\*.*?\*/", " ", raw, flags=re.DOTALL)
+    expr = re.split(r"--\s|#", expr, maxsplit=1)[0]
+
+    # Substitute the row's own id (1) for the column, then rebalance injected parens.
+    clause = _balance_parens("1 = " + expr)
+    clause = re.sub(r"\bAND\b", " and ", clause, flags=re.IGNORECASE)
+    clause = re.sub(r"\bOR\b", " or ", clause, flags=re.IGNORECASE)
+    clause = re.sub(r"\bNOT\b", " not ", clause, flags=re.IGNORECASE)
+    clause = clause.replace("<>", "!=")
+    # Turn SQL `=` into Python `==` without touching `<=`, `>=`, `!=`, `==`.
+    clause = re.sub(r"(?<![<>=!])=(?!=)", "==", clause)
+
+    # Keep eval sandboxed: only pure-numeric boolean logic ever reaches it. Everything
+    # else (quotes, functions, string literals) we can't model, so behave like baseline.
+    probe = re.sub(r"\b(?:and|or|not)\b", " ", clause)
+    if _NUMERIC_BOOL.search(probe):
+        return True
+    try:
+        return bool(eval(clause, {"__builtins__": {}}, {}))  # noqa: S307 (toy oracle)
+    except Exception:
+        return True
+
+
 def _result_text(raw: str) -> str:
     """Shared vulnerable 'query' logic → the message text for a given `id` value.
 
-    Honors SLEEP()/WAITFOR (time-based), unbalanced quotes (error-based), and a
-    1=2 style false condition (boolean-based).
+    Honors SLEEP()/WAITFOR (time-based), unbalanced quotes (error-based), and a real
+    numeric boolean condition (boolean-based) so all scanners get a fair test.
     """
     m = re.search(r"sleep\((\d+)\)", raw, re.IGNORECASE) or re.search(
         r"waitfor\s+delay\s+'0:0:(\d+)'", raw, re.IGNORECASE
@@ -63,10 +124,7 @@ def _result_text(raw: str) -> str:
     if raw.count("'") % 2 == 1:  # unbalanced quote breaks the query
         return MYSQL_ERROR
 
-    if re.search(r"1\s*=\s*2", raw) or re.search(r"'1'\s*=\s*'2'", raw):
-        return "No results found."
-
-    return "Product #1: Blue Widget - in stock. Full description here."
+    return _PRODUCT if _row_matches(raw) else _EMPTY
 
 
 # A constant reply for the SAFE endpoints: input is never reflected into a query, so a

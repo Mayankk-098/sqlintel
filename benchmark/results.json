@@ -1,0 +1,142 @@
+{
+  "target_set": "mock",
+  "base_url": "http://127.0.0.1:8099",
+  "skipped": [],
+  "results": [
+    {
+      "tool": "sqlintel",
+      "rows": [
+        {
+          "target": "mock-item-query",
+          "vulnerable": true,
+          "found": true,
+          "correct": true,
+          "seconds": 2.772
+        },
+        {
+          "target": "mock-api-json",
+          "vulnerable": true,
+          "found": true,
+          "correct": true,
+          "seconds": 2.507
+        },
+        {
+          "target": "mock-safe-query",
+          "vulnerable": false,
+          "found": false,
+          "correct": true,
+          "seconds": 0.934
+        },
+        {
+          "target": "mock-safe-json",
+          "vulnerable": false,
+          "found": false,
+          "correct": true,
+          "seconds": 0.947
+        }
+      ],
+      "metrics": {
+        "tp": 2,
+        "fp": 0,
+        "tn": 2,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "fp_rate": 0.0,
+        "accuracy": 1.0,
+        "mean_time": 1.789891024993267
+      }
+    },
+    {
+      "tool": "sqlmap",
+      "rows": [
+        {
+          "target": "mock-item-query",
+          "vulnerable": true,
+          "found": false,
+          "correct": false,
+          "seconds": 26.053
+        },
+        {
+          "target": "mock-api-json",
+          "vulnerable": true,
+          "found": false,
+          "correct": false,
+          "seconds": 25.963
+        },
+        {
+          "target": "mock-safe-query",
+          "vulnerable": false,
+          "found": false,
+          "correct": true,
+          "seconds": 2.562
+        },
+        {
+          "target": "mock-safe-json",
+          "vulnerable": false,
+          "found": false,
+          "correct": true,
+          "seconds": 2.502
+        }
+      ],
+      "metrics": {
+        "tp": 0,
+        "fp": 0,
+        "tn": 2,
+        "fn": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "fp_rate": 0.0,
+        "accuracy": 0.5,
+        "mean_time": 14.270066925033461
+      }
+    },
+    {
+      "tool": "ghauri",
+      "rows": [
+        {
+          "target": "mock-item-query",
+          "vulnerable": true,
+          "found": true,
+          "correct": true,
+          "seconds": 0.427
+        },
+        {
+          "target": "mock-api-json",
+          "vulnerable": true,
+          "found": true,
+          "correct": true,
+          "seconds": 0.377
+        },
+        {
+          "target": "mock-safe-query",
+          "vulnerable": false,
+          "found": false,
+          "correct": true,
+          "seconds": 15.375
+        },
+        {
+          "target": "mock-safe-json",
+          "vulnerable": false,
+          "found": false,
+          "correct": true,
+          "seconds": 15.136
+        }
+      ],
+      "metrics": {
+        "tp": 2,
+        "fp": 0,
+        "tn": 2,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "fp_rate": 0.0,
+        "accuracy": 1.0,
+        "mean_time": 7.828678449994186
+      }
+    }
+  ]
+}

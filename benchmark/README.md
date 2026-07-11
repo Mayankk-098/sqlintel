@@ -67,6 +67,34 @@ next step — the mock suite is the number that matters for the write-up.)
 Each tool's `found` verdict is compared to the target's `vulnerable` label to fill the
 confusion matrix, then aggregated into the metrics table.
 
+## Interpreting the sqlmap result on the mock suite
+
+On the mock suite sqlmap reports **0 confirmed** findings, and that number is honest but
+needs context — it is *not* evidence that sqlmap is a weak scanner. Against the mock,
+sqlmap's verbose log shows it **heuristically detects** the injection and flags the
+parameter as `appears to be injectable` for the boolean-based, stacked-query, and
+time-based techniques. It then runs its own false-positive / exploitability check and
+**declines to confirm**:
+
+```
+[INFO] GET parameter 'id' appears to be 'AND boolean-based blind - WHERE or HAVING clause' injectable
+[INFO] checking if the injection point on GET parameter 'id' is a false positive
+[WARNING] false positive or unexploitable injection point detected
+```
+
+The mock oracle is deliberately fair: it evaluates sqlmap's own verification payloads
+(`AND <rand>=<rand>` true vs false, inequalities, and the `1) AND ... AND (1=1`
+parenthesis boundary) and returns the logically correct page for each. The reason sqlmap
+still declines is that the mock is a **blind** target that returns no extractable query
+data, so sqlmap's conservative gate — which prefers a corroborating error/UNION vector
+before committing — treats a boolean-only signal as unexploitable. Ghauri, which is less
+conservative, confirms the same target. SQLintel confirms it because its independent
+proof-verifier re-derives the boolean toggle.
+
+**Takeaway:** on the mock, treat this as "SQLintel and Ghauri confirm; sqlmap detects but
+won't commit without exploitable output." For a fair read of sqlmap's real recall, use the
+DVWA target set, where the app returns query data sqlmap can corroborate.
+
 ## Honest caveats
 
 - **The mock suite is small** (4 targets). The numbers demonstrate methodology, not a
