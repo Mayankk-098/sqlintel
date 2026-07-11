@@ -9,12 +9,19 @@ import math
 from benchmark.harness import (
     confusion,
     detect_tools,
+    ghauri_cmd,
     metrics_from_counts,
     parse_ghauri_output,
     parse_sqlmap_output,
     render_table,
+    sqlintel_cmd,
+    sqlmap_cmd,
 )
-from benchmark.targets import MOCK_TARGETS
+from benchmark.targets import DVWA_TARGETS, MOCK_TARGETS
+
+
+def _target(body_kind):
+    return next(t for t in MOCK_TARGETS if t.body_kind == body_kind)
 
 
 # --- metric math -----------------------------------------------------------------------
@@ -113,3 +120,42 @@ def test_render_table_is_ascii_only():
     table = render_table(results)
     assert table.isascii()          # must survive Windows cp1252
     assert "sqlintel" in table
+
+
+# --- command builders ------------------------------------------------------------------
+
+def test_sqlintel_cmd_json_target_uses_json_body():
+    cmd = sqlintel_cmd("http://h", _target("json"))
+    assert "--json-body" in cmd
+    assert "-d" in cmd                                  # JSON body is passed via -d
+    assert "http://h/api/item" in cmd
+
+
+def test_sqlintel_cmd_query_target_has_no_body_flags():
+    cmd = sqlintel_cmd("http://h", _target("query"))
+    assert "--json-body" not in cmd
+    assert "-d" not in cmd
+
+
+def test_sqlmap_and_ghauri_send_json_body_as_data():
+    t = _target("json")
+    assert "--data" in sqlmap_cmd("http://h", t)
+    assert '{"id": 1}' in sqlmap_cmd("http://h", t)
+    assert "--data" in ghauri_cmd("http://h", t)
+
+
+def test_cookie_threaded_into_every_tool():
+    t = DVWA_TARGETS[0]
+    cookie = "PHPSESSID=deadbeef; security=low"
+    # SQLintel takes it as a Cookie header, sqlmap/Ghauri via --cookie.
+    assert f"Cookie: {cookie}" in sqlintel_cmd("http://h", t, cookie)
+    for builder in (sqlmap_cmd, ghauri_cmd):
+        cmd = builder("http://h", t, cookie)
+        assert "--cookie" in cmd
+        assert cookie in cmd
+
+
+def test_no_cookie_means_no_auth_flags():
+    t = MOCK_TARGETS[0]
+    assert "--cookie" not in sqlmap_cmd("http://h", t)
+    assert "-H" not in sqlintel_cmd("http://h", t)

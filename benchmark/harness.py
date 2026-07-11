@@ -65,38 +65,63 @@ def _run_command(cmd: List[str], timeout: float) -> Tuple[int, float, str]:
     return code, elapsed, (out + err)
 
 
-def run_sqlintel(base_url: str, t: Target, timeout: float) -> Tuple[bool, float, str]:
-    """Adapter for SQLintel itself — the current Python interpreter, always available."""
+# --- Command builders (pure, so tests can assert on the argv without running a tool) ----
+# An optional `cookie` (e.g. "PHPSESSID=abc; security=low") carries the authenticated
+# session needed for DVWA/Juice Shop targets: SQLintel takes it as a Cookie header,
+# sqlmap/Ghauri via --cookie.
+
+def sqlintel_cmd(base_url: str, t: Target, cookie: Optional[str] = None) -> List[str]:
     cmd = [sys.executable, "-m", "sqlintel", "-u", base_url + t.path,
            "-p", t.param, "--batch", "-q"]
     if t.body_kind == "json":
         cmd += ["-d", t.data or "{}", "--json-body"]
     elif t.body_kind == "form":
         cmd += ["-d", t.data or ""]
-    code, elapsed, raw = _run_command(cmd, timeout)
-    return code == SQLINTEL_FOUND_EXIT, elapsed, raw
+    if cookie:
+        cmd += ["-H", f"Cookie: {cookie}"]
+    return cmd
 
 
-def run_sqlmap(base_url: str, t: Target, timeout: float) -> Tuple[bool, float, str]:
-    exe = shutil.which("sqlmap")
-    cmd = [exe or "sqlmap", "-u", base_url + t.path, "-p", t.param,
+def sqlmap_cmd(base_url: str, t: Target, cookie: Optional[str] = None) -> List[str]:
+    cmd = [shutil.which("sqlmap") or "sqlmap", "-u", base_url + t.path, "-p", t.param,
            "--batch", "--flush-session", "--level=1", "--risk=1"]
     if t.body_kind in ("form", "json") and t.data:
         cmd += ["--data", t.data]  # sqlmap auto-detects a JSON body and tests its params
-    _code, elapsed, raw = _run_command(cmd, timeout)
+    if cookie:
+        cmd += ["--cookie", cookie]
+    return cmd
+
+
+def ghauri_cmd(base_url: str, t: Target, cookie: Optional[str] = None) -> List[str]:
+    cmd = [shutil.which("ghauri") or "ghauri", "-u", base_url + t.path, "-p", t.param,
+           "--batch"]
+    if t.body_kind in ("form", "json") and t.data:
+        cmd += ["--data", t.data]
+    if cookie:
+        cmd += ["--cookie", cookie]
+    return cmd
+
+
+def run_sqlintel(base_url: str, t: Target, timeout: float,
+                 cookie: Optional[str] = None) -> Tuple[bool, float, str]:
+    """Adapter for SQLintel itself — the current Python interpreter, always available."""
+    code, elapsed, raw = _run_command(sqlintel_cmd(base_url, t, cookie), timeout)
+    return code == SQLINTEL_FOUND_EXIT, elapsed, raw
+
+
+def run_sqlmap(base_url: str, t: Target, timeout: float,
+               cookie: Optional[str] = None) -> Tuple[bool, float, str]:
+    _code, elapsed, raw = _run_command(sqlmap_cmd(base_url, t, cookie), timeout)
     return parse_sqlmap_output(raw), elapsed, raw
 
 
-def run_ghauri(base_url: str, t: Target, timeout: float) -> Tuple[bool, float, str]:
-    exe = shutil.which("ghauri")
-    cmd = [exe or "ghauri", "-u", base_url + t.path, "-p", t.param, "--batch"]
-    if t.body_kind in ("form", "json") and t.data:
-        cmd += ["--data", t.data]
-    _code, elapsed, raw = _run_command(cmd, timeout)
+def run_ghauri(base_url: str, t: Target, timeout: float,
+               cookie: Optional[str] = None) -> Tuple[bool, float, str]:
+    _code, elapsed, raw = _run_command(ghauri_cmd(base_url, t, cookie), timeout)
     return parse_ghauri_output(raw), elapsed, raw
 
 
-ADAPTERS: Dict[str, Callable[[str, Target, float], Tuple[bool, float, str]]] = {
+ADAPTERS: Dict[str, Callable[..., Tuple[bool, float, str]]] = {
     "sqlintel": run_sqlintel,
     "sqlmap": run_sqlmap,
     "ghauri": run_ghauri,
@@ -156,13 +181,14 @@ def metrics_from_counts(tp: int, fp: int, tn: int, fn: int, mean_time: float = 0
 # --- Run loop + rendering --------------------------------------------------------------
 
 def run_tool(name: str, base_url: str, targets: List[Target], timeout: float,
-             on_event: Optional[Callable[[str], None]] = None) -> dict:
+             on_event: Optional[Callable[[str], None]] = None,
+             cookie: Optional[str] = None) -> dict:
     """Run one tool across every target; return per-target rows + aggregate metrics."""
     adapter = ADAPTERS[name]
     emit = on_event or (lambda _msg: None)
     rows, pairs, times = [], [], []
     for t in targets:
-        found, elapsed, _raw = adapter(base_url, t, timeout)
+        found, elapsed, _raw = adapter(base_url, t, timeout, cookie)
         correct = found == t.vulnerable
         emit(f"  {name:9s} {t.id:18s} found={str(found):5s} "
              f"truth={str(t.vulnerable):5s} {'ok' if correct else 'MISS'} {elapsed:.2f}s")

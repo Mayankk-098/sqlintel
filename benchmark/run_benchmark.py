@@ -63,6 +63,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--port", type=int, default=8099, help="Port for the mock server")
     p.add_argument("--timeout", type=float, default=120.0,
                    help="Per-scan timeout in seconds (default: 120)")
+    p.add_argument("--cookie", default=None,
+                   help="Session cookie for authed targets, e.g. "
+                        "'PHPSESSID=<id>; security=low' (required for DVWA)")
     p.add_argument("--out", default=_HERE, help="Directory for results.md / results.json")
     args = p.parse_args(argv)
 
@@ -85,6 +88,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         base_url = args.base_url or "http://127.0.0.1:8080"
 
+    if args.target_set == "dvwa" and not args.cookie:
+        print("[warn] DVWA targets are auth-gated; without --cookie the tools will be "
+              "redirected to the login page and every target will read as not-vulnerable. "
+              "Pass --cookie 'PHPSESSID=<id>; security=low'.")
+
     print(f"[run] target-set={args.target_set} base={base_url} "
           f"tools={','.join(available)}\n")
 
@@ -93,7 +101,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         for name in available:
             print(f"[{name}]")
             results.append(run_tool(name, base_url, targets, args.timeout,
-                                    on_event=print))
+                                    on_event=print, cookie=args.cookie))
             print("")
     finally:
         if server is not None:

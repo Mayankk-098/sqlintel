@@ -48,13 +48,16 @@ Bring up the bundled DVWA (`docker-compose.yml` at the repo root), log in
 grab your session cookie and run:
 
 ```bash
-python -m benchmark.run_benchmark --target-set dvwa --base-url http://127.0.0.1:8080
+python -m benchmark.run_benchmark --target-set dvwa --base-url http://127.0.0.1:8080 \
+  --cookie "PHPSESSID=<your-session-id>; security=low"
 ```
 
-DVWA gates its SQLi modules behind auth, so the tools need the session cookie
-(`PHPSESSID=<id>; security=low`). SQLintel accepts it via `-H "Cookie: PHPSESSID=...; security=low"`;
-sqlmap/Ghauri take `--cookie`. (Cookie wiring for the DVWA adapters is a documented
-next step — the mock suite is the number that matters for the write-up.)
+DVWA gates its SQLi modules behind auth, so pass the session cookie via `--cookie`; the
+harness routes it to every tool (SQLintel as a `Cookie:` header, sqlmap/Ghauri via their
+`--cookie` flag). Grab `PHPSESSID` from your browser's devtools after logging in
+(`admin` / `password`) and setting DVWA Security = low. Without `--cookie` the tools are
+redirected to the login page and every target reads as not-vulnerable (the runner warns
+about this).
 
 ## How tools are scored
 
