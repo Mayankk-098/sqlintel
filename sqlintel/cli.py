@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from typing import List, Optional
@@ -63,6 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-p", "--param", help="Comma-separated params to test (default: all)")
     p.add_argument("-m", "--method", default="GET", help="HTTP method for -u (default: GET)")
     p.add_argument("-d", "--data", default="", help="POST body for -u, e.g. 'a=1&b=2'")
+    p.add_argument("--json-body", action="store_true",
+                   help="Parse -d/--data as a JSON object and scan it as a JSON API body")
     p.add_argument("--force-https", action="store_true", help="Use https for -r targets")
 
     p.add_argument("--proxy", help="Proxy URL, e.g. http://127.0.0.1:8080")
@@ -83,6 +86,26 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-q", "--quiet", action="store_true", help="Suppress progress output")
     p.add_argument("-V", "--version", action="version", version=f"SQLintel {__version__}")
     return p
+
+
+def _apply_json_body(req, data: str) -> None:
+    """Load `-d/--data` as a JSON object into `req` as a JSON API body.
+
+    Only top-level scalar fields become injection points (stored as strings, the form
+    the engine mutates); nested objects/arrays are dropped from the fuzzed set. This
+    mirrors how the crawler labels captured REST endpoints, and lets the benchmark
+    DIRECT-scan a JSON API — SQLintel's differentiator — instead of sending form data.
+    """
+    try:
+        obj = json.loads(data)
+    except ValueError as exc:
+        raise SystemExit(f"--json-body: -d/--data is not valid JSON: {exc}")
+    if not isinstance(obj, dict):
+        raise SystemExit("--json-body: -d/--data must be a JSON object, e.g. '{\"id\": 1}'")
+    req.body = {k: str(v) for k, v in obj.items() if isinstance(v, (str, int, float, bool))}
+    req.body_type = "json"
+    if req.method == "GET":  # a body implies a write method
+        req.method = "POST"
 
 
 def _parse_headers(items: List[str]) -> dict:
@@ -177,8 +200,12 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Build the request from either -u or -r.
     if args.url:
-        req = from_url(args.url, method=args.method, data=args.data)
+        # With --json-body, -d is a JSON object (not urlencoded form data), so keep it
+        # out of from_url's form parser and load it via _apply_json_body instead.
+        req = from_url(args.url, method=args.method, data="" if args.json_body else args.data)
         target_desc = args.url
+        if args.json_body and args.data:
+            _apply_json_body(req, args.data)
     else:
         req = from_raw_file(args.request_file, force_https=args.force_https)
         target_desc = args.request_file

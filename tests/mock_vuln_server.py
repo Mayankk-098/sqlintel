@@ -10,6 +10,8 @@ Routes:
                          (so the Playwright crawler has links/forms/XHR to discover)
   GET  /item?id=1     -> HTML product lookup (classic query-param sink)
   POST /api/item      -> JSON API lookup; body {"id": 1} (REST/JSON body sink)
+  GET  /safe/item?id=1-> SAFE: ignores input, constant reply (a benchmark true negative)
+  POST /safe/api/item -> SAFE JSON: ignores input, constant reply (true negative)
 
 Run:  python tests/mock_vuln_server.py 8099
 Then: sqlintel -u "http://127.0.0.1:8099/item?id=1" -p id --batch
@@ -67,6 +69,12 @@ def _result_text(raw: str) -> str:
     return "Product #1: Blue Widget - in stock. Full description here."
 
 
+# A constant reply for the SAFE endpoints: input is never reflected into a query, so a
+# quote yields no error, 1=1/1=2 look identical, and SLEEP() never delays. These endpoints
+# exist so the benchmark has true negatives to measure the false-positive rate against.
+_SAFE_REPLY = "Product #1: Blue Widget - in stock. Full description here."
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):  # silence noisy logging
         pass
@@ -76,6 +84,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/":
             return self._send(_INDEX_HTML, "text/html")
 
+        # SAFE route first, so it never falls through to the vulnerable /item logic below.
+        if path == "/safe/item":
+            return self._send(f"<html><body>{_SAFE_REPLY}</body></html>", "text/html")
+
         qs = parse_qs(urlparse(self.path).query, keep_blank_values=True)
         raw = qs.get("id", ["1"])[0]
         return self._send(f"<html><body>{_result_text(raw)}</body></html>", "text/html")
@@ -84,6 +96,10 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length else b""
+
+        # SAFE route first: read (and discard) the body, then reply with a constant.
+        if path == "/safe/api/item":
+            return self._send(json.dumps({"result": _SAFE_REPLY}), "application/json")
 
         if path == "/api/item":
             try:

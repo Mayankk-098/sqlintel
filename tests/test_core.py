@@ -1,5 +1,6 @@
 """Offline unit tests — no network required."""
 
+from sqlintel.cli import _apply_json_body, build_parser
 from sqlintel.core.request_parser import from_url
 from sqlintel.ml.features import finding_features, payload_features
 from sqlintel.payloads.data import all_time_payloads, match_dbms_error
@@ -21,6 +22,22 @@ def test_from_url_with_data_becomes_post():
     req = from_url("http://host/login", method="GET", data="user=admin&pass=x")
     assert req.method == "POST"
     assert req.body == {"user": "admin", "pass": "x"}
+
+
+def test_json_body_flag_builds_json_request():
+    # --json-body: -d is a JSON object, so from_url gets no form data and we load it
+    # via _apply_json_body -> scalar fields become string injection points on a JSON body.
+    req = from_url("http://host/api/item", method="GET", data="")
+    _apply_json_body(req, '{"id": 1, "q": "shoes", "meta": {"nested": true}}')
+    assert req.body_type == "json"
+    assert req.method == "POST"
+    assert req.body == {"id": "1", "q": "shoes"}  # nested object dropped from fuzz set
+    assert {p.param for p in req.injection_points()} == {"id", "q"}
+
+
+def test_json_body_flag_is_registered():
+    args = build_parser().parse_args(["-u", "http://h/api", "-d", "{}", "--json-body"])
+    assert args.json_body is True
 
 
 def test_param_filter():
