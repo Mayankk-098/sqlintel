@@ -1,0 +1,100 @@
+{
+  "target_set": "dvwa",
+  "base_url": "http://localhost:8080",
+  "skipped": [],
+  "results": [
+    {
+      "tool": "sqlintel",
+      "rows": [
+        {
+          "target": "dvwa-sqli",
+          "vulnerable": true,
+          "found": true,
+          "correct": true,
+          "seconds": 29.555
+        },
+        {
+          "target": "dvwa-sqli-blind",
+          "vulnerable": true,
+          "found": true,
+          "correct": true,
+          "seconds": 8.041
+        }
+      ],
+      "metrics": {
+        "tp": 2,
+        "fp": 0,
+        "tn": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "fp_rate": 0.0,
+        "accuracy": 1.0,
+        "mean_time": 18.79835225001443
+      }
+    },
+    {
+      "tool": "sqlmap",
+      "rows": [
+        {
+          "target": "dvwa-sqli",
+          "vulnerable": true,
+          "found": true,
+          "correct": true,
+          "seconds": 16.362
+        },
+        {
+          "target": "dvwa-sqli-blind",
+          "vulnerable": true,
+          "found": true,
+          "correct": true,
+          "seconds": 14.331
+        }
+      ],
+      "metrics": {
+        "tp": 2,
+        "fp": 0,
+        "tn": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "fp_rate": 0.0,
+        "accuracy": 1.0,
+        "mean_time": 15.346268100023735
+      }
+    },
+    {
+      "tool": "ghauri",
+      "rows": [
+        {
+          "target": "dvwa-sqli",
+          "vulnerable": true,
+          "found": true,
+          "correct": true,
+          "seconds": 10.462
+        },
+        {
+          "target": "dvwa-sqli-blind",
+          "vulnerable": true,
+          "found": true,
+          "correct": true,
+          "seconds": 11.671
+        }
+      ],
+      "metrics": {
+        "tp": 2,
+        "fp": 0,
+        "tn": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "fp_rate": 0.0,
+        "accuracy": 1.0,
+        "mean_time": 11.066936849965714
+      }
+    }
+  ]
+}

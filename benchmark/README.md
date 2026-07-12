@@ -98,6 +98,23 @@ proof-verifier re-derives the boolean toggle.
 won't commit without exploitable output." For a fair read of sqlmap's real recall, use the
 DVWA target set, where the app returns query data sqlmap can corroborate.
 
+### DVWA cross-check (confirms the above)
+
+Run against DVWA (a real, data-returning app; results in `benchmark/dvwa/results.md`),
+**all three tools confirm every target — including sqlmap**:
+
+| tool     | TP | FP | FN | recall | F1   | mean(s) |
+|----------|----|----|----|--------|------|---------|
+| sqlintel | 2  | 0  | 0  | 1.00   | 1.00 | 18.80   |
+| sqlmap   | 2  | 0  | 0  | 1.00   | 1.00 | 15.35   |
+| ghauri   | 2  | 0  | 0  | 1.00   | 1.00 | 11.07   |
+
+This is the point of running both sets: sqlmap's mock-suite 0 was its conservative gate on
+a blind toy, not a capability gap — on a real target it confirms perfectly, and SQLintel
+holds its own against both established tools. Note the DVWA set has **no true negatives**
+(every shipped DVWA target is vulnerable), so its FP-rate/accuracy are not meaningful; the
+mock suite remains the set that measures false positives.
+
 ## Honest caveats
 
 - **The mock suite is small** (4 targets). The numbers demonstrate methodology, not a
