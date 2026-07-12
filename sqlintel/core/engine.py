@@ -38,6 +38,10 @@ class Engine:
 
         self._emit(f"Baseline request -> {req.method} {req.url}")
         baseline = self.client.baseline(req)
+        if not baseline.ok:
+            # No trustworthy reference to compare against — skip rather than guess.
+            self._emit(f"  [!] Baseline request failed ({baseline.error}); skipping target.")
+            return []
         self._emit(
             f"Baseline: status={baseline.status} len={baseline.length} "
             f"time={baseline.elapsed:.2f}s"

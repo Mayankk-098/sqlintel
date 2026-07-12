@@ -123,6 +123,68 @@ class _StubClient:
         return Response(200, "<html>baseline product page</html>", 0.01, {})
 
 
+def test_response_ok_reflects_error():
+    assert Response(200, "ok", 0.01, {}).ok is True
+    assert Response(0, "", 0.0, {}, error="boom").ok is False
+
+
+def test_http_client_send_survives_network_error(monkeypatch):
+    import httpx
+
+    from sqlintel.core.http_client import HttpClient
+
+    client = HttpClient()
+
+    def boom(*_a, **_k):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(client._client, "request", boom)
+    resp = client.send(Request(method="GET", url="http://host/i", query={"id": "1"}))
+    client.close()
+    assert resp.ok is False
+    assert resp.error
+    assert resp.elapsed == 0.0          # must never look like a time-based delay
+
+
+def test_engine_skips_target_on_failed_baseline():
+    from sqlintel.core.engine import Engine
+
+    class FailBaseline:
+        def baseline(self, req):
+            return Response(0, "", 0.0, {}, error="reset")
+
+        def send(self, req, mutation=None):
+            return Response(0, "", 0.0, {}, error="reset")
+
+    findings = Engine(FailBaseline(), verify=False).scan(
+        Request(method="GET", url="http://h/i", query={"id": "1"})
+    )
+    assert findings == []
+
+
+def test_time_based_ignores_failed_control():
+    from sqlintel.detectors.time_based import TimeBasedDetector
+
+    baseline = Response(200, "ok", 0.01, {})
+
+    class Client:
+        def send(self, req, mutation=None):
+            val = list(mutation.values())[0].lower()
+            is_sleep = "sleep" in val or "waitfor" in val
+            is_control = "(0)" in val or "0:0:0" in val
+            if is_sleep and is_control:
+                return Response(0, "", 0.0, {}, error="reset")   # control fails
+            if is_sleep:
+                return Response(200, "ok", 9.0, {})              # real-looking delay
+            return baseline
+
+    finding = TimeBasedDetector(Client(), baseline, delay=5).test(
+        Request(method="GET", url="http://h", query={"id": "1"}),
+        InjectionPoint(param="id", value="1"),
+    )
+    assert finding is None   # a network error on the control must not confirm a delay
+
+
 def test_error_proof_sets_proven():
     baseline = Response(200, "<html>baseline product page</html>", 0.01, {})
     req = Request(method="GET", url="http://host/i", query={"id": "1"})

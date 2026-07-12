@@ -23,10 +23,17 @@ class Response:
     text: str
     elapsed: float  # seconds, wall-clock — used by the time-based detector
     headers: Dict[str, str]
+    # Set when the request failed (timeout, reset, DNS, etc.). Such a response is
+    # "inconclusive": detectors must skip it rather than treat it as a real answer.
+    error: Optional[str] = None
 
     @property
     def length(self) -> int:
         return len(self.text)
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
 
 
 class HttpClient:
@@ -84,14 +91,20 @@ class HttpClient:
                 send_kwargs["data"] = body
 
         start = time.perf_counter()
-        resp = self._client.request(
-            req.method,
-            req.url,
-            params=query or None,
-            cookies=req.cookies or None,
-            headers=req.headers or None,
-            **send_kwargs,
-        )
+        try:
+            resp = self._client.request(
+                req.method,
+                req.url,
+                params=query or None,
+                cookies=req.cookies or None,
+                headers=req.headers or None,
+                **send_kwargs,
+            )
+        except httpx.HTTPError as exc:
+            # A timeout / reset / DNS failure on one probe must not kill the whole scan.
+            # Return an inconclusive response with elapsed=0.0 so it can never be mistaken
+            # for a time-based delay; detectors skip responses where `.ok` is False.
+            return Response(status=0, text="", elapsed=0.0, headers={}, error=str(exc))
         elapsed = time.perf_counter() - start
         return Response(
             status=resp.status_code,

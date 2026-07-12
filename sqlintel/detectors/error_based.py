@@ -20,6 +20,8 @@ class ErrorBasedDetector(BaseDetector):
         for probe in ERROR_PROBES:
             mutated = self._mutate_value(point, probe)
             resp = self.client.send(req, mutation={point.param: mutated})
+            if not resp.ok:  # network error on this probe — inconclusive, try the next
+                continue
             dbms, snippet = match_dbms_error(resp.text)
             if dbms and not base_dbms:
                 return Finding(

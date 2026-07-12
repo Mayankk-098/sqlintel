@@ -1,7 +1,7 @@
-"""Render findings to the console and to JSON.
+"""Render findings to the console, JSON, and SARIF.
 
-SARIF output (for GitHub code scanning / CI) is a planned Phase-2 addition; the JSON
-schema here is intentionally close to a SARIF result so the mapping is small.
+SARIF output (for GitHub code scanning / CI) is produced by `to_sarif`; the JSON schema
+here is intentionally close to a SARIF result so the mapping stays small.
 """
 
 from __future__ import annotations

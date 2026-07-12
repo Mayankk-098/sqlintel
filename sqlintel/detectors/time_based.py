@@ -31,7 +31,7 @@ class TimeBasedDetector(BaseDetector):
             resp = self.client.send(
                 req, mutation={point.param: self._mutate_value(point, payload)}
             )
-            if resp.elapsed < threshold:
+            if not resp.ok or resp.elapsed < threshold:
                 continue
 
             # Re-confirm with a 0-second control: it should return fast.
@@ -39,7 +39,9 @@ class TimeBasedDetector(BaseDetector):
             control = self.client.send(
                 req, mutation={point.param: self._mutate_value(point, control_payload)}
             )
-            if control.elapsed < threshold:
+            # A failed control is inconclusive — don't let a network error masquerade as
+            # a fast control and thereby "confirm" the delay.
+            if control.ok and control.elapsed < threshold:
                 return Finding(
                     injection_point=point,
                     technique=self.name,

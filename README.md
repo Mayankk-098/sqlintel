@@ -13,7 +13,7 @@ endpoints (including JSON APIs) traditional scanners miss.
 
 ## Why another scanner?
 
-Every existing tool has the same gaps (see the design notes in `docs/`):
+Every existing tool has the same gaps:
 
 - **sqlmap / Ghauri** — powerful but noisy, give up early on edge cases, and are blind to
   modern JS/SPA/API targets.
