@@ -3,9 +3,9 @@ intern id- CTTS117
 # SQLintel
 
 **AI-augmented SQL injection vulnerability scanner.** A deterministic detection engine
-(boolean / error / time-based) that reliably finds and *proves* SQLi, with a trained ML
-layer to cut false positives — plus browser-based SPA/API crawling that auto-discovers
-endpoints (including JSON APIs) traditional scanners miss.
+(boolean / error / time / UNION-based) that reliably finds and *proves* SQLi, with a
+trained ML layer to cut false positives — plus browser-based SPA/API crawling that
+auto-discovers endpoints (including JSON APIs) traditional scanners miss.
 
 > ⚠️ **Legal use only.** Scan only systems you own or have **written authorization** to test.
 > The bundled `docker-compose.yml` spins up intentionally vulnerable practice apps (DVWA,
@@ -38,11 +38,11 @@ Crawler (Playwright, SPA/API) ─▶ Detection Engine ─▶ Proof Verifier ─�
 
 | Phase | What | State |
 |-------|------|-------|
-| 1 | Deterministic engine (boolean + error + time-based), CLI, `-r`/URL input, JSON report | ✅ done |
+| 1 | Deterministic engine (boolean + error + time + UNION-based), CLI, `-r`/URL input, JSON report | ✅ done |
 | 2 | Proof-based verification (independent re-confirmation) + SARIF output | ✅ done |
 | 3 | Playwright SPA/API crawler (auto endpoint discovery, JSON API bodies) | ✅ done |
 | 4 | Trained ML classifier (XGBoost baseline → DistilBERT) wired into triage | ✅ baseline done |
-| 5 | Benchmark vs sqlmap & Ghauri on DVWA/Juice Shop | 🔜 |
+| 5 | Benchmark vs sqlmap & Ghauri (reproducible mock suite + DVWA) — see [`benchmark/`](benchmark/) | ✅ done |
 
 ## Quick start
 
