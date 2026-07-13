@@ -7,10 +7,26 @@ that make sqlmap/Ghauri's `-r` so useful.
 
 from __future__ import annotations
 
+import json
 from typing import Dict
 from urllib.parse import parse_qsl, urlparse, urlunparse
 
 from .target import Request
+
+
+def _json_body(body_str: str) -> Dict[str, str]:
+    """Parse a JSON object body into {field: str}, keeping only top-level scalars.
+
+    Mirrors the `-u --json-body` path so a saved REST/API request scans identically.
+    Returns {} if the body isn't a JSON object (caller falls back to form parsing).
+    """
+    try:
+        obj = json.loads(body_str)
+    except ValueError:
+        return {}
+    if not isinstance(obj, dict):
+        return {}
+    return {k: str(v) for k, v in obj.items() if isinstance(v, (str, int, float, bool))}
 
 
 def from_url(url: str, method: str = "GET", data: str = "") -> Request:
@@ -73,7 +89,18 @@ def from_raw_file(path: str, force_https: bool = False) -> Request:
     parsed = urlparse(f"{scheme}://{host}{path_and_query}")
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
     url = urlunparse(parsed._replace(query=""))
-    body = dict(parse_qsl(body_str.strip(), keep_blank_values=True)) if body_str.strip() else {}
+
+    # Branch on Content-Type so a JSON API request isn't mangled by the form parser.
+    content_type = next((v for k, v in headers.items() if k.lower() == "content-type"), "")
+    body: Dict[str, str] = {}
+    body_type = "form"
+    if body_str.strip():
+        if "application/json" in content_type.lower():
+            body = _json_body(body_str)
+            if body:
+                body_type = "json"
+        if not body:  # not JSON (or empty JSON) -> treat as urlencoded form
+            body = dict(parse_qsl(body_str.strip(), keep_blank_values=True))
 
     return Request(
         method=method.upper(),
@@ -82,4 +109,5 @@ def from_raw_file(path: str, force_https: bool = False) -> Request:
         query=query,
         body=body,
         cookies=cookies,
+        body_type=body_type,
     )

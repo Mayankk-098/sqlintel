@@ -5,6 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+# Cookies that carry session/auth/CSRF state — fuzzing them just breaks the session,
+# so they're excluded from automatic injection-point enumeration.
+_SKIP_COOKIES = {
+    "phpsessid", "jsessionid", "asp.net_sessionid", "sessionid", "session", "sid",
+    "csrftoken", "csrf", "csrf_token", "xsrf-token", "_csrf", "auth", "token",
+}
+# Attacker-controllable headers that realistically reach SQL sinks (logging, geo, etc.).
+_INJECTABLE_HEADERS = {
+    "user-agent", "referer", "x-forwarded-for", "x-forwarded-host",
+    "x-client-ip", "true-client-ip", "x-real-ip",
+}
+
 
 @dataclass
 class InjectionPoint:
@@ -44,6 +56,15 @@ class Request:
             points.append(InjectionPoint(param=name, value=val, location="query"))
         for name, val in self.body.items():
             points.append(InjectionPoint(param=name, value=val, location="body"))
+        # Cookies and headers are real SQLi sinks too (X-Forwarded-For, cookie values),
+        # but blindly fuzzing session cookies / every header is noisy and breaks auth —
+        # so we skip session-like cookies and only test a curated set of headers.
+        for name, val in self.cookies.items():
+            if name.lower() not in _SKIP_COOKIES:
+                points.append(InjectionPoint(param=name, value=val, location="cookie"))
+        for name, val in self.headers.items():
+            if name.lower() in _INJECTABLE_HEADERS:
+                points.append(InjectionPoint(param=name, value=val, location="header"))
         if only:
             wanted = {p.strip() for p in only}
             points = [p for p in points if p.param in wanted]

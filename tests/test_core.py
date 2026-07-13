@@ -185,6 +185,118 @@ def test_time_based_ignores_failed_control():
     assert finding is None   # a network error on the control must not confirm a delay
 
 
+def test_union_detector_reflects_marker_and_extracts_version():
+    from sqlintel.detectors.union_based import UnionBasedDetector, _MARKER, _VL, _VR
+
+    baseline = Response(200, "<html>Product page</html>", 0.01, {})
+
+    class Client:
+        """Emulate a string-context UNION sink that needs a quote break and 2 columns."""
+
+        def send(self, req, mutation=None):
+            val = list(mutation.values())[0]
+            if "UNION SELECT" not in val:
+                return baseline
+            if "'" not in val.split("UNION")[0]:      # needs the quote break-out
+                return baseline
+            body = val.split("UNION SELECT", 1)[1]
+            if _MARKER in body:                        # column-count probe
+                ncols = body.split("--")[0].count(",") + 1
+                return Response(200, f"<html>{_MARKER}</html>", 0.01, {}) if ncols == 2 \
+                    else baseline
+            if "@@version" in body:                    # version-extraction probe
+                return Response(200, f"<html>{_VL}8.0.36-MySQL{_VR}</html>", 0.01, {})
+            return baseline
+
+    finding = UnionBasedDetector(Client(), baseline).test(
+        Request(method="GET", url="http://h", query={"id": "1"}),
+        InjectionPoint(param="id", value="1"),
+    )
+    assert finding is not None
+    assert finding.technique == "union-based"
+    assert finding.dbms == "MySQL"
+    assert finding.proven is True                      # data extraction = impact proof
+    assert "8.0.36" in finding.evidence
+
+
+def test_injection_points_include_cookies_and_curated_headers():
+    req = Request(
+        method="GET", url="http://h/i", query={"id": "1"},
+        cookies={"PHPSESSID": "abc", "pref": "dark"},
+        headers={"User-Agent": "x", "Accept": "text/html"},
+    )
+    pts = {(p.param, p.location) for p in req.injection_points()}
+    assert ("id", "query") in pts
+    assert ("pref", "cookie") in pts
+    assert ("PHPSESSID", "cookie") not in pts     # session cookie is skipped
+    assert ("User-Agent", "header") in pts
+    assert ("Accept", "header") not in pts        # not in the injectable set
+
+
+def test_send_routes_cookie_and_header_mutations(monkeypatch):
+    from sqlintel.core.http_client import HttpClient
+
+    client = HttpClient()
+    captured = {}
+
+    class _Resp:
+        status_code, text, headers = 200, "x", {}
+
+    def fake_request(method, url, **kw):
+        captured.clear()
+        captured.update(kw)
+        return _Resp()
+
+    monkeypatch.setattr(client._client, "request", fake_request)
+    req = Request(method="GET", url="http://h/i", query={"id": "1"},
+                  cookies={"tid": "1"}, headers={"X-Forwarded-For": "1"})
+
+    client.send(req, mutation={"tid": "INJ"})
+    assert captured["cookies"]["tid"] == "INJ"       # cookie mutated in place
+    assert captured["params"]["id"] == "1"           # not leaked into the query
+
+    client.send(req, mutation={"X-Forwarded-For": "INJ2"})
+    assert captured["headers"]["X-Forwarded-For"] == "INJ2"
+    client.close()
+
+
+def test_from_raw_file_parses_json_body(tmp_path):
+    from sqlintel.core.request_parser import from_raw_file
+
+    raw = (
+        "POST /api/item HTTP/1.1\r\n"
+        "Host: example.com\r\n"
+        "Content-Type: application/json\r\n"
+        "\r\n"
+        '{"id": 1, "q": "shoes"}'
+    )
+    path = tmp_path / "req.txt"
+    path.write_bytes(raw.encode("utf-8"))  # avoid Windows newline translation
+
+    req = from_raw_file(str(path))
+    assert req.method == "POST"
+    assert req.body_type == "json"
+    assert req.body == {"id": "1", "q": "shoes"}
+
+
+def test_from_raw_file_form_body_unchanged(tmp_path):
+    from sqlintel.core.request_parser import from_raw_file
+
+    raw = (
+        "POST /login HTTP/1.1\r\n"
+        "Host: example.com\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "\r\n"
+        "user=admin&pass=x"
+    )
+    path = tmp_path / "req.txt"
+    path.write_bytes(raw.encode("utf-8"))  # avoid Windows newline translation
+
+    req = from_raw_file(str(path))
+    assert req.body_type == "form"
+    assert req.body == {"user": "admin", "pass": "x"}
+
+
 def test_error_proof_sets_proven():
     baseline = Response(200, "<html>baseline product page</html>", 0.01, {})
     req = Request(method="GET", url="http://host/i", query={"id": "1"})

@@ -79,6 +79,15 @@ BOOLEAN_PAIRS: List[Tuple[str, str]] = [
 ]
 
 
+# --- UNION-based --------------------------------------------------------------
+# Try up to this many columns when balancing a UNION SELECT.
+UNION_MAX_COLUMNS = 10
+# Context-closing prefixes tried before the UNION (numeric, single/double quote,
+# and their parenthesised variants) — the same breakouts real injections need.
+UNION_PREFIXES: List[str] = ["", "'", '"', ")", "')", '")']
+UNION_COMMENT = "-- -"
+
+
 # --- Time-based ---------------------------------------------------------------
 # {delay} is substituted with the number of seconds to sleep.
 TIME_PAYLOADS: Dict[str, List[str]] = {

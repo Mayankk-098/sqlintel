@@ -67,12 +67,20 @@ class HttpClient:
         """
         query = dict(req.query)
         body = dict(req.body)
+        cookies = dict(req.cookies)
+        headers = dict(req.headers)
         if mutation:
             for key, val in mutation.items():
+                # Apply to whichever location already holds the param, so cookie/header
+                # injection points are mutated in place rather than leaking into the query.
                 if key in query:
                     query[key] = val
                 elif key in body:
                     body[key] = val
+                elif key in cookies:
+                    cookies[key] = val
+                elif key in headers:
+                    headers[key] = val
                 else:
                     # New/unknown param: default to query string.
                     query[key] = val
@@ -96,8 +104,8 @@ class HttpClient:
                 req.method,
                 req.url,
                 params=query or None,
-                cookies=req.cookies or None,
-                headers=req.headers or None,
+                cookies=cookies or None,
+                headers=headers or None,
                 **send_kwargs,
             )
         except httpx.HTTPError as exc:
