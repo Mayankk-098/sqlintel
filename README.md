@@ -1,4 +1,4 @@
-intern id- CTTS117
+
 
 # SQLintel
 
